@@ -1,0 +1,31 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build the Docker image
+      run: |
+        docker build . --file Dockerfile --tag christiannolte/radprogateway:latest
+    - name: Show the Docker image
+      run: |
+        docker images
+    - name: Login on Dockerhub
+      run: |
+        echo -n ${{ secrets.DOCKER_HUB_TOKEN }} | docker login -u christiannolte --password-stdin
+    - name: Push to Dockerhub
+      run: |
+        docker push christiannolte/radprogateway:latest
+    - name: Logout from Dockerhub
+      run: |
+        docker logout

@@ -1,0 +1,36 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: radprogateway
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/OWNER/radprogateway.git
+    targetRevision: main
+    path: deploy/overlays/example
+    # Broker/Topic/Schnittstelle in ArgoCD (Application) setzen, hat Vorrang vor dem Overlay:
+    # kustomize:
+    #   patches:
+    #     - target:
+    #         kind: ConfigMap
+    #         name: radprogateway-config
+    #       patch: |-
+    #         - op: replace
+    #           path: /data/BROKER
+    #           value: mqtt.other.org
+    #         - op: replace
+    #           path: /data/TOPIC
+    #           value: anderes/topic
+    #         - op: replace
+    #           path: /data/SERIAL_PORT
+    #           value: /dev/ttyUSB0
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: radprogateway
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

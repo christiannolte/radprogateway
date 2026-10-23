@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: radprogateway
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # serielles Gerät kann nur von einem Pod genutzt werden
+  selector:
+    matchLabels:
+      app: radprogateway
+  template:
+    metadata:
+      labels:
+        app: radprogateway
+    spec:
+      # Node, an dem das Messgerät per USB hängt, z.B.:
+      #   kubectl label node <node> radprogateway/serial=true
+      nodeSelector:
+        radprogateway/serial: "true"
+      containers:
+        - name: radprogateway
+          image: docker.io/christiannolte/radprogateway:latest
+          imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: radprogateway-config
+          securityContext:
+            privileged: true   # Host-Geräte (serielle Schnittstelle) sind im Container sichtbar
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
