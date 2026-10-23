@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+data:
+  BROKER: {{ .Values.config.broker | quote }}
+  TOPIC: {{ .Values.config.topic | quote }}
+  SERIAL_PORT: {{ .Values.config.serialPort | quote }}
+  MQTT_PORT: {{ .Values.config.mqttPort | quote }}

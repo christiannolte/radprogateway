@@ -1,0 +1,23 @@
+image:
+  repository: docker.io/christiannolte/radprogateway
+  tag: latest
+  pullPolicy: Always
+
+# Dummy-Werte – müssen beim Deployment (ArgoCD) überschrieben werden
+config:
+  broker: CHANGE_ME
+  topic: CHANGE_ME
+  serialPort: CHANGE_ME
+  mqttPort: "1883"
+
+# Node, an dem das Messgerät per USB hängt, z.B.:
+#   kubectl label node <node> radprogateway/serial=true
+nodeSelector:
+  radprogateway/serial: "true"
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    memory: 128Mi
