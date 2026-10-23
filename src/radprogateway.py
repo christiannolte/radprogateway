@@ -8,10 +8,6 @@ import os
 import sys
 
 
-missing=[v for v in ("BROKER", "TOPIC", "SERIAL_PORT") if not os.environ.get(v)]
-if missing:
-    sys.exit("Fehler: Umgebungsvariable(n) nicht gesetzt: "+", ".join(missing))
-
 loopdelay=60 #seconds
 min_value=999.99
 max_value=0.0
@@ -43,16 +39,6 @@ def get_tubeSensitivity(myser):
         return(float(retval2[1][:-2]))
 
 
-ser = serial.Serial(
-    port=os.environ["SERIAL_PORT"],
-    baudrate=115200,
-    parity=serial.PARITY_NONE,
-    stopbits=serial.STOPBITS_ONE,
-    bytesize=serial.EIGHTBITS,
-    timeout=0.1
-)
-
-
 mydata= {
  "Dosisleistung":9999,
  "Aktivitaet":9998,
@@ -63,25 +49,67 @@ mydata= {
 
 print("Welcome to Radprogateway")
 
-broker = os.environ["BROKER"]
-port = int(os.environ.get("MQTT_PORT", "1883"))
-topicgrp = os.environ["TOPIC"]
+# Alle Startprüfungen ausführen und Fehler sammeln, damit im Log alle Probleme auf einmal sichtbar sind
+errors=[]
+
+def report(msg):
+    errors.append(msg)
+    print(msg, file=sys.stderr, flush=True)
+
+serial_port = os.environ.get("SERIAL_PORT")
+broker = os.environ.get("BROKER")
+topicgrp = os.environ.get("TOPIC")
+
+for name, value in (("BROKER", broker), ("TOPIC", topicgrp), ("SERIAL_PORT", serial_port)):
+    if not value:
+        report("Fehler: Umgebungsvariable "+name+" ist nicht gesetzt")
+
+try:
+    port = int(os.environ.get("MQTT_PORT", "1883"))
+except ValueError:
+    port = 1883
+    report("Fehler: MQTT_PORT '"+os.environ["MQTT_PORT"]+"' ist keine gültige Zahl")
+
+ser = None
+if serial_port:
+    try:
+        ser = serial.Serial(
+            port=serial_port,
+            baudrate=115200,
+            parity=serial.PARITY_NONE,
+            stopbits=serial.STOPBITS_ONE,
+            bytesize=serial.EIGHTBITS,
+            timeout=0.1
+        )
+    except (serial.SerialException, OSError, ValueError) as e:
+        report("Fehler: Serielle Schnittstelle '"+serial_port+"' kann nicht geöffnet werden: "+str(e)
+               +"\nPrüfen: Existiert das Gerät auf dem Node? Stimmt SERIAL_PORT? Ausreichende Rechte (privileged)?")
 
 client = mqtt.Client()
+if broker and topicgrp:
+    client.will_set(
+        topic=topicgrp+"/status",
+        payload="offline",
+        qos=1,
+        retain=True
+    )
+    try:
+        client.connect(broker, port)
+    except (OSError, ValueError) as e:
+        report("Fehler: Verbindung zum MQTT-Broker '"+broker+":"+str(port)+"' fehlgeschlagen: "+str(e)
+               +"\nPrüfen: Stimmen BROKER und MQTT_PORT? Ist der Broker vom Cluster aus erreichbar (DNS, Firewall)?")
 
-client.will_set(
-    topic=topicgrp+"/status",
-    payload="offline",
-    qos=1,
-    retain=True
-)
+sensitivity=None
+if ser is not None:
+    sensitivity=get_tubeSensitivity(ser)
+    if sensitivity is None:
+        report("Fehler: Keine gültige Antwort des Messgeräts auf '"+serial_port+"'. "
+               "Ist das richtige Gerät angeschlossen und die Baudrate (115200) korrekt?")
 
-client.connect(broker, port)
+if errors:
+    sys.exit("Start abgebrochen wegen "+str(len(errors))+" Fehler(n), siehe oben.")
+
 client.publish(topicgrp+"/status", "online", qos=1, retain=True, properties=None)
-
-ser.isOpen()
-
-sensitivity=get_tubeSensitivity(ser)
 print("Sensitivity: "+str(sensitivity)+ " cpm/uSv/h")
 cnt_old=get_tubePulseCount(ser)
 
