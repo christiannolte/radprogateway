@@ -11,7 +11,8 @@ Liest einen Geigerzähler über die serielle Schnittstelle aus (`GET tubeRate`, 
 - Bei Verbindungsabbruch verbindet sich der MQTT-Client selbst neu und setzt den Status wieder auf `online`.
 - `/tmp/heartbeat` wird nur aktualisiert, wenn der Zähler gelesen wurde **und** der Broker die Daten (QoS 1) innerhalb von 10 s bestätigt hat.
 - Ändert sich der Zählerstand 5 Messungen in Folge nicht, gilt er als stehend und der Heartbeat bleibt aus. Die Daten werden weiterhin gesendet.
-- Die Liveness-Probe startet den Container neu, wenn der Heartbeat fehlt oder älter als 180 s ist (2 Fehlversuche im Abstand von 60 s).
+- Die Startup-Probe wartet bis zu 210 s auf den ersten Heartbeat und startet den Container sonst neu.
+- Danach: Die Liveness-Probe startet den Container neu, wenn der Heartbeat fehlt oder älter als 180 s ist (2 Fehlversuche im Abstand von 60 s).
 
 Bei längerem Broker-Ausfall wird der Pod wiederholt neu gestartet. Min/Max liegen nur im Speicher und gehen bei jedem Neustart verloren. Wegen QoS 1 können Nachrichten doppelt oder nach einem Reconnect verspätet ankommen.
 

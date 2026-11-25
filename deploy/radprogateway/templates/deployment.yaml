@@ -42,6 +42,16 @@ spec:
                 - /tmp/heartbeat
             initialDelaySeconds: 60
             periodSeconds: 5
+          # Start: bis zu 210 s (42 x 5 s) auf den ersten Heartbeat warten, sonst Neustart.
+          # Liveness- und Readiness-Probe beginnen erst nach Erfolg.
+          startupProbe:
+            exec:
+              command:
+                - test
+                - -f
+                - /tmp/heartbeat
+            periodSeconds: 5
+            failureThreshold: 42
           # Neustart, wenn länger nicht erfolgreich gelesen und an den Broker gesendet wurde
           livenessProbe:
             exec:
@@ -49,7 +59,6 @@ spec:
                 - python
                 - -c
                 - "import os,time,sys; sys.exit(time.time()-os.path.getmtime('/tmp/heartbeat') > 180)"
-            initialDelaySeconds: 150
             periodSeconds: 60
             timeoutSeconds: 10
             failureThreshold: 2
