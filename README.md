@@ -5,6 +5,18 @@ Liest einen Geigerzähler über die serielle Schnittstelle aus (`GET tubeRate`, 
 - `<TOPIC>/data` – JSON mit Dosisleistung, Aktivität, Sensitivität, Min/Max (alle 60 s)
 - `<TOPIC>/status` – `online` / `offline` (Last Will, retained)
 
+## Fehlerbehandlung und automatischer Neustart
+
+- Startfehler, ungültige Antworten des Messgeräts und serielle Fehler beenden das Programm; Kubernetes startet den Container neu.
+- Bei Verbindungsabbruch verbindet sich der MQTT-Client selbst neu und setzt den Status wieder auf `online`.
+- `/tmp/heartbeat` wird nur aktualisiert, wenn der Zähler gelesen wurde **und** der Broker die Daten (QoS 1) innerhalb von 10 s bestätigt hat.
+- Ändert sich der Zählerstand 5 Messungen in Folge nicht, gilt er als stehend und der Heartbeat bleibt aus. Die Daten werden weiterhin gesendet.
+- Die Liveness-Probe startet den Container neu, wenn der Heartbeat fehlt oder älter als 180 s ist (2 Fehlversuche im Abstand von 60 s).
+
+Bei längerem Broker-Ausfall wird der Pod wiederholt neu gestartet. Min/Max liegen nur im Speicher und gehen bei jedem Neustart verloren. Wegen QoS 1 können Nachrichten doppelt oder nach einem Reconnect verspätet ankommen.
+
+**Update bestehender Installationen:** Die Probe braucht das neue Image. Erst das Image bauen und den Pod damit laufen lassen, dann das geänderte Chart synchronisieren, sonst wird das alte Image ständig neu gestartet.
+
 ## Konfiguration (Umgebungsvariablen)
 
 Es gibt keine Defaults im Code. Fehlt eine Pflichtvariable, beendet sich das Programm mit einer Fehlermeldung.

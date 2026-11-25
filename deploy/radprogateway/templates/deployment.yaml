@@ -28,6 +28,17 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ .Release.Name }}-config
+          # Neustart, wenn länger nicht erfolgreich gelesen und an den Broker gesendet wurde
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import os,time,sys; sys.exit(time.time()-os.path.getmtime('/tmp/heartbeat') > 180)"
+            initialDelaySeconds: 150
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 2
           securityContext:
             privileged: true   # Host-Geräte (serielle Schnittstelle) sind im Container sichtbar
           resources:
