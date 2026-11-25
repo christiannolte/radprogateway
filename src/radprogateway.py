@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import pathlib
+import signal
 
 
 loopdelay=60 #seconds
@@ -94,9 +95,15 @@ def on_connect(client, userdata, flags, rc):
     # Auch nach jedem Reconnect: der Last Will hat den Status sonst auf "offline" gesetzt
     if rc==0:
         print("Mit MQTT-Broker verbunden")
+        client.subscribe(topicgrp+"/status", qos=1)
         client.publish(topicgrp+"/status", "online", qos=1, retain=True)
     else:
         print("Fehler: MQTT-Broker lehnt Verbindung ab: "+mqtt.connack_string(rc), file=sys.stderr, flush=True)
+
+def on_message(client, userdata, msg):
+    # Beim Rolling Update setzt der Last Will des alten Pods den Status auf "offline"
+    if msg.payload==b"offline":
+        client.publish(topicgrp+"/status", "online", qos=1, retain=True)
 
 def on_disconnect(client, userdata, rc):
     if rc!=0:
@@ -105,6 +112,7 @@ def on_disconnect(client, userdata, rc):
 client = mqtt.Client()
 client.on_connect = on_connect
 client.on_disconnect = on_disconnect
+client.on_message = on_message
 if broker and topicgrp:
     client.will_set(
         topic=topicgrp+"/status",
@@ -127,6 +135,10 @@ if ser is not None:
 
 if errors:
     sys.exit("Start abgebrochen wegen "+str(len(errors))+" Fehler(n), siehe oben.")
+
+# Als PID 1 würde SIGTERM sonst ignoriert und der alte Pod liefe noch 30 s parallel weiter.
+# Ohne client.disconnect() sendet der Broker weiterhin den Last Will.
+signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(0))
 
 # Netzwerk-Thread: Keepalive, Bestätigungen und automatisches Neuverbinden
 client.loop_start()

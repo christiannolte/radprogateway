@@ -5,7 +5,12 @@ metadata:
 spec:
   replicas: 1
   strategy:
-    type: Recreate   # serielles Gerät kann nur von einem Pod genutzt werden
+    # Der alte Pod wird erst beendet, wenn der neue bereit ist.
+    # Währenddessen greifen kurz beide auf das serielle Gerät zu.
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: {{ .Release.Name }}
@@ -28,6 +33,15 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ .Release.Name }}-config
+          # Bereit erst, wenn einmal erfolgreich gelesen und gesendet wurde (nach ca. 60 s)
+          readinessProbe:
+            exec:
+              command:
+                - test
+                - -f
+                - /tmp/heartbeat
+            initialDelaySeconds: 60
+            periodSeconds: 5
           # Neustart, wenn länger nicht erfolgreich gelesen und an den Broker gesendet wurde
           livenessProbe:
             exec:

@@ -72,7 +72,15 @@ Auf dem Node muss das Gerät vorhanden sein (Pfad = `SERIAL_PORT`):
 ls -l /dev/ttyUSB0    # bzw. /dev/ttyS0 o. ä.
 ```
 
-Der Container läuft `privileged`, damit er die Host-Geräte unter `/dev` sieht. Es wird kein `hostPath`-Volume gemountet; der Pfad aus `SERIAL_PORT` muss daher im Container unter `/dev` existieren. Es darf nur ein Pod gleichzeitig auf das Gerät zugreifen (Deployment-Strategie `Recreate`, 1 Replikat).
+Der Container läuft `privileged`, damit er die Host-Geräte unter `/dev` sieht. Es wird kein `hostPath`-Volume gemountet; der Pfad aus `SERIAL_PORT` muss daher im Container unter `/dev` existieren. Im Normalbetrieb läuft nur ein Pod (1 Replikat); Ausnahme ist das Update, siehe unten.
+
+### Updates ohne Unterbrechung
+
+Das Deployment nutzt `RollingUpdate` (`maxSurge: 1`, `maxUnavailable: 0`). Der alte Pod wird erst beendet, wenn der neue bereit ist, also einmal den Zähler gelesen und die Daten gesendet hat (nach ca. 60 s). Startet der neue Pod nicht erfolgreich, läuft der alte weiter.
+
+- Während des Updates greifen beide Pods auf das serielle Gerät zu. Fragen sie gleichzeitig ab, kann ein Pod eine ungültige Antwort erhalten, sich beenden und neu gestartet werden. In diesem Fall ist eine Lücke in den Daten möglich.
+- Beide Pods senden in dieser Zeit Daten. Min/Max des neuen Pods beginnen von vorn.
+- Der Last Will des alten Pods setzt den Status kurz auf `offline`. Der neue Pod abonniert `<TOPIC>/status` und setzt ihn wieder auf `online`. Der Broker muss ihm dafür das Abonnieren erlauben.
 
 ### 2. Application in ArgoCD anlegen
 
