@@ -6,11 +6,16 @@ import paho.mqtt.client as mqtt
 import json
 import os
 import sys
+import pathlib
 
 
 loopdelay=60 #seconds
 min_value=999.99
 max_value=0.0
+# Wird nur nach erfolgreichem Lesen und bestätigtem Publish aktualisiert (Liveness-Probe)
+heartbeat_file=pathlib.Path("/tmp/heartbeat")
+stall_limit=5 # Messungen in Folge ohne neuen Impuls, ab denen der Zählerstand als stehend gilt
+publish_timeout=10 #seconds
 
 
 def get_tubeRate(myser):
@@ -85,7 +90,21 @@ if serial_port:
         report("Fehler: Serielle Schnittstelle '"+serial_port+"' kann nicht geöffnet werden: "+str(e)
                +"\nPrüfen: Existiert das Gerät auf dem Node? Stimmt SERIAL_PORT? Ausreichende Rechte (privileged)?")
 
+def on_connect(client, userdata, flags, rc):
+    # Auch nach jedem Reconnect: der Last Will hat den Status sonst auf "offline" gesetzt
+    if rc==0:
+        print("Mit MQTT-Broker verbunden")
+        client.publish(topicgrp+"/status", "online", qos=1, retain=True)
+    else:
+        print("Fehler: MQTT-Broker lehnt Verbindung ab: "+mqtt.connack_string(rc), file=sys.stderr, flush=True)
+
+def on_disconnect(client, userdata, rc):
+    if rc!=0:
+        print("Fehler: Verbindung zum MQTT-Broker verloren (rc="+str(rc)+")", file=sys.stderr, flush=True)
+
 client = mqtt.Client()
+client.on_connect = on_connect
+client.on_disconnect = on_disconnect
 if broker and topicgrp:
     client.will_set(
         topic=topicgrp+"/status",
@@ -109,9 +128,11 @@ if ser is not None:
 if errors:
     sys.exit("Start abgebrochen wegen "+str(len(errors))+" Fehler(n), siehe oben.")
 
-client.publish(topicgrp+"/status", "online", qos=1, retain=True, properties=None)
+# Netzwerk-Thread: Keepalive, Bestätigungen und automatisches Neuverbinden
+client.loop_start()
 print("Sensitivity: "+str(sensitivity)+ " cpm/uSv/h")
 cnt_old=get_tubePulseCount(ser)
+stall_count=0
 
 while(1):
     time.sleep(60)
@@ -132,7 +153,25 @@ while(1):
     mydata["MaxDosisleistung"]=max_value
     json_string = json.dumps(mydata)
     print(json_string)
-    client.publish(topicgrp+"/data", json_string)
+
+    stall_count = stall_count+1 if current_cpm==0 else 0
+    counter_ok = stall_count<stall_limit
+    if not counter_ok:
+        print("Fehler: Zählerstand seit "+str(stall_count)+" Messungen unverändert", file=sys.stderr, flush=True)
+
+    published=False
+    info=client.publish(topicgrp+"/data", json_string, qos=1)
+    try:
+        info.wait_for_publish(timeout=publish_timeout)
+        published=info.is_published()
+        if not published:
+            print("Fehler: Broker hat die Nachricht nicht bestätigt", file=sys.stderr, flush=True)
+    except (ValueError, RuntimeError) as e:
+        print("Fehler: MQTT-Publish fehlgeschlagen: "+str(e), file=sys.stderr, flush=True)
+
+    if counter_ok and published:
+        heartbeat_file.touch()
+
 
     print("----------------------------------------------------------------")
 
